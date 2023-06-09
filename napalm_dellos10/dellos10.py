@@ -738,17 +738,17 @@ class DellOS10Driver(NetworkDriver):
 
         if retrieve in ('startup', 'all'):
             command = 'show startup-configuration'
-            output = self._send_command_expect(command)
+            output = self.send_command(command, read_timeout=25)
             configs['startup'] = output
 
         if retrieve in ('running', 'all'):
             command = 'show running-configuration'
-            output = self._send_command_expect(command)
+            output = self.send_command(command, read_timeout=25)
             configs['running'] = output
 
         if retrieve in ('candidate', 'all'):
             command = 'show candidate-configuration'
-            output = self._send_command_expect(command)
+            output = self.send_command(command, read_timeout=25)
             configs['candidate'] = output
 
         return configs
