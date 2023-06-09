@@ -145,7 +145,7 @@ class DellOS10Driver(NetworkDriver):
         try:
             error_msg = "Error while executing the command : {} output :: {}"
             self.device.set_base_prompt()
-            output = self.device.send_command(command)
+            output = self.device.send_command(command, read_timeout=25)
             if "% Error" in output:
                 raise CommandErrorException(error_msg.format(command, output))
 
