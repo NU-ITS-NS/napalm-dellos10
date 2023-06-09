@@ -122,8 +122,7 @@ class DellOS10Driver(NetworkDriver):
         self.device = None
         self.config_replace = False
 
-        self.platform = "dellos10"
-        self.profile = [self.platform]
+        self.profile = ["dellos10"]
 
     def open(self):
         """Open a connection to the device."""
@@ -405,10 +404,10 @@ class DellOS10Driver(NetworkDriver):
                     "Merge source config file does not exist")
             cmd = 'copy home://{} running-configuration'.format(filename)
             output = self._commit_hostname_handler(cmd)
-            if 'Invalid input detected' in output or 'Error' in output:
+            if 'Invalid input detected' in output:
+                self.rollback()
                 err_header = "Configuration merge failed; automatic " \
-                             "rollback not available, leaving in an " \
-                             "inconsistent state"
+                             "rollback attempted"
                 merge_error = "{0}:\n{1}".format(err_header, output)
                 raise MergeConfigException(merge_error)
 
@@ -537,75 +536,6 @@ class DellOS10Driver(NetworkDriver):
 
         return ret
 
-    def get_environment(self):
-        """Return a set of facts from the devices."""
-        ret = {
-            'fans': {},
-            'temperature': {},
-            'power': {},
-            'cpu': {
-                'system': {}
-            },
-            'memory': {},
-        }
-    
-        temp_output = self._send_command('show environment | display-xml')
-        temp_output_data = self.convert_xml_data(temp_output)
-        for sensor in temp_output_data.findall("./data/system/environment/thermal-sensor"):
-            name = self.parse_item(sensor, 'sensor-name')
-            temp = self.parse_item(sensor, 'sensor-temp')
-            ret['temperature'][name] = {
-                'temperature': float(temp),
-                'is_alert': False,
-                'is_critical': False,
-            }
-
-        system_output = self._send_command('show system | display-xml')
-        system_output_data = self.convert_xml_data(system_output)
-        for psu in system_output_data.findall("./data/system/node/power-supply"):
-            name = "Unit %d" % int(self.parse_item(psu, 'psu-id'))
-            status = self.parse_item(psu, 'status')
-            ret['power'][name] = {
-                'status': True if status == 'up' else False,
-                'capacity': -1.0,  # not implemented
-                'output': -1.0,    # not implemented
-            }
-        for fan in system_output_data.findall("./data/system/node/fan-tray"):
-            name = "Fan Tray %d" % int(self.parse_item(fan, 'fan-tray-id'))
-            status = self.parse_item(psu, 'status')
-            ret['fans'][name] = {
-                'status': True if status == 'up' else False
-            }
-
-        processes_output = self._send_command('show processes node-id 1')
-        memory_regexps = [
-            r'KiB Mem :\D*(?P<total>\d+) total,\D*(?P<free>\d+) free,\D*(?P<used>\d+) used',
-            r'KiB Mem :\D*(?P<total>\d+) total,\D*(?P<free>\d+) free,\D*(?P<used>\d+) used',
-        ]
-        for memory_regexp in memory_regexps:
-            memory_output = re.search(memory_regexp, processes_output)
-            if memory_output:
-                memory_free = int(memory_output.group("free"))
-                memory_used = int(memory_output.group("used"))
-                break
-        else:
-            memory_free = 0
-            memory_used = 0
-
-        ret['memory']['available_ram'] = memory_free
-        ret['memory']['used_ram'] = memory_used
-
-
-        
-        cpu_regexp = r'%Cpu\(s\):\s*([\d|\.]+) us,\s*([\d|\.]+) sy,\s*([\d|\.]+) ni,\s*([\d|\.]+) id,\s*([\d|\.]+) wa,\s*([\d|\.]+) hi,\s*([\d|\.]+) si,\s*([\d|\.]+) st'
-        cpu_output = re.search(cpu_regexp, processes_output)
-        cpu_idle = float(cpu_output.groups()[3])
-        cpu_usage = float(100.0 - cpu_idle)
-
-        ret['cpu']['system']['%usage'] = cpu_usage
-
-        return ret
-
     def cli(self, commands):
         """
         Execute a list of commands and return the output in a dictionary
@@ -721,7 +651,7 @@ class DellOS10Driver(NetworkDriver):
                     ping_dict.update({'results': results_array})
         return {status: ping_dict}
 
-    def get_config(self, retrieve='all', sanitized=False):
+    def get_config(self, retrieve='all'):
         """To get_config for Dell OS10.
 
         Returns the startup or/and running configuration as dictionary.
@@ -805,24 +735,26 @@ class DellOS10Driver(NetworkDriver):
     def get_interfaces(self):
         """Get interface details.
 
+        last_flapped is not implemented
+
         Example Output:
 
         {   u'Vlan1': {'description': u'N/A',
                       'is_enabled': True,
                       'is_up': True,
-                      'last_flapped': 26,
+                      'last_flapped': -1.0,
                       'mac_address': u'a493.4cc1.67a7',
                       'speed': 100},
         u'Vlan100': {   'description': u'Data Network',
                         'is_enabled': True,
                         'is_up': True,
-                        'last_flapped': 31,
+                        'last_flapped': -1.0,
                         'mac_address': u'a493.4cc1.67a7',
                         'speed': 100},
         u'Vlan200': {   'description': u'Voice Network',
                         'is_enabled': True,
                         'is_up': True,
-                        'last_flapped': 443,
+                        'last_flapped': -1.0,
                         'mac_address': u'a493.4cc1.67a7',
                         'speed': 100}}
         """
@@ -855,13 +787,7 @@ class DellOS10Driver(NetworkDriver):
                 intf['is_up'] = False if oper_status == "down" else True
 
                 speed_val = self.parse_item(interface, 'speed')
-                speed_val_int = self.convert_int(speed_val)
-                if speed_val_int > 0:
-                    speed_val_int = int(speed_val_int / 1000000)
-                intf['speed'] = speed_val_int
-
-                mtu_val = self.parse_item(interface, 'mtu')
-                intf['mtu'] = self.convert_int(mtu_val)
+                intf['speed'] = self.convert_int(speed_val)
 
                 interfaces_dict[name] = intf
 
@@ -895,7 +821,7 @@ class DellOS10Driver(NetworkDriver):
                 ret_mac_dict.append(mac_dict)
         return ret_mac_dict
 
-    def get_route_to(self, destination=u'', protocol=u'', longer=False):
+    def get_route_to(self, destination=u'', protocol=u''):
         """To get routes.
 
         :param destination: The destination prefix to be used when
@@ -996,6 +922,7 @@ class DellOS10Driver(NetworkDriver):
         interfaces_output = self._send_command(cmd)
         interfaces_output_list = self._build_xml_list(interfaces_output)
         ret_interfaces_dict = {}
+        print("in ip")
 
         for interfaces_output in interfaces_output_list:
             if_xml_data = self.convert_xml_data(interfaces_output)
@@ -1019,7 +946,7 @@ class DellOS10Driver(NetworkDriver):
                     if "/" in ipv6_address_with_prefix:
                         ipv6_split_list = ipv6_address_with_prefix.split("/")
                         ipv6 = ipv6_split_list[0]
-                        ipv6_prefix = self.convert_int(ipv6_split_list[1])
+                        ipv6_prefix = self.convert_int(ip_split_list[1])
                         interfaces_dict.update(
                             {"ipv6": {ipv6: {'prefix_length': ipv6_prefix}}})
 
@@ -1661,8 +1588,8 @@ class DellOS10Driver(NetworkDriver):
                                                           remote_chassis_id,
                                                           remote_name,
                                                           remote_desc,
-                                                          remote_capab.split(),
-                                                          remote_enable_cap.split())
+                                                          remote_capab,
+                                                          remote_enable_cap)
 
                     lldp_rem_entry_list.append(entry_dict)
 
@@ -1676,8 +1603,8 @@ class DellOS10Driver(NetworkDriver):
                             remote_chassis_id,
                             remote_system_name,
                             remote_system_desc,
-                            remote_system_capab = [],
-                            remote_enable_capab = []):
+                            remote_system_capab,
+                            remote_enable_capab):
         rem_entry_dict = {}
         rem_entry_dict["parent_interface"] = self.UNKNOWN
         rem_entry_dict["remote_port"] = u"" + remote_port
@@ -1685,8 +1612,8 @@ class DellOS10Driver(NetworkDriver):
         rem_entry_dict["remote_chassis_id"] = u"" + remote_chassis_id
         rem_entry_dict["remote_system_name"] = u"" + remote_system_name
         rem_entry_dict["remote_system_description"] = u"" + remote_system_desc
-        rem_entry_dict["remote_system_capab"] = remote_system_capab
-        rem_entry_dict["remote_system_enable_capab"] = remote_enable_capab
+        rem_entry_dict["remote_system_capab"] = u"" + remote_system_capab
+        rem_entry_dict["remote_system_enable_capab"] = u"" + remote_enable_capab
 
         return rem_entry_dict
 
