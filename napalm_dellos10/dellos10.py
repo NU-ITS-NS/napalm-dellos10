@@ -86,7 +86,6 @@ class DellOS10Driver(NetworkDriver):
                                               'rollback_config.txt')
 
         # Netmiko possible arguments
-        '''
         netmiko_argument_map = {
             'port': None,
             'secret': '',
@@ -104,7 +103,6 @@ class DellOS10Driver(NetworkDriver):
             'session_timeout': 90,
             'timeout': 120
         }
-        '''
 
         # Build dict of any optional Netmiko args
         self.netmiko_optional_args = {}
@@ -147,7 +145,7 @@ class DellOS10Driver(NetworkDriver):
         try:
             error_msg = "Error while executing the command : {} output :: {}"
             self.device.set_base_prompt()
-            output = self.device.send_command(command, read_timeout=25)
+            output = self.device.send_command(command, read_timeout=30)
             if "% Error" in output:
                 raise CommandErrorException(error_msg.format(command, output))
 
@@ -740,17 +738,17 @@ class DellOS10Driver(NetworkDriver):
 
         if retrieve in ('startup', 'all'):
             command = 'show startup-configuration'
-            output = self.send_command(command, read_timeout=25)
+            output = self._send_command(command)
             configs['startup'] = output
 
         if retrieve in ('running', 'all'):
             command = 'show running-configuration'
-            output = self.send_command(command, read_timeout=25)
+            output = self._send_command(command)
             configs['running'] = output
 
         if retrieve in ('candidate', 'all'):
             command = 'show candidate-configuration'
-            output = self.send_command(command, read_timeout=25)
+            output = self._send_command(command)
             configs['candidate'] = output
 
         return configs
