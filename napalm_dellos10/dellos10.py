@@ -86,6 +86,7 @@ class DellOS10Driver(NetworkDriver):
                                               'rollback_config.txt')
 
         # Netmiko possible arguments
+        '''
         netmiko_argument_map = {
             'port': None,
             'secret': '',
@@ -103,6 +104,7 @@ class DellOS10Driver(NetworkDriver):
             'session_timeout': 90,
             'timeout': 120
         }
+        '''
 
         # Build dict of any optional Netmiko args
         self.netmiko_optional_args = {}
